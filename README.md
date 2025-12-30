@@ -60,6 +60,8 @@
 - **Android 连接**: ADB Gateway + Scrcpy
 
 ## 📋 快速开始
+0. **初始化容器环境**
+[Redroid 容器环境初始化指南](https://github.com/remote-android/redroid-doc/blob/master/deploy/README.md)
 
 1. **克隆仓库**
    ```bash
