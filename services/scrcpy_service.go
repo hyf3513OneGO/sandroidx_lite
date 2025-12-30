@@ -197,10 +197,7 @@ func (s *ScrcpySession) RemoveSubscriber(id string) {
 
 	log.Printf("[scrcpy] 订阅者 %s 已移除，剩余订阅者: %d", id, subscriberCount)
 
-	// 如果没有订阅者了，启动空闲计时器
-	if subscriberCount == 0 {
-		s.startIdleTimer()
-	}
+	// 不再自动关闭会话，即使没有订阅者也会保持会话运行
 }
 
 // startIdleTimer 启动空闲计时器，在优雅期后关闭会话

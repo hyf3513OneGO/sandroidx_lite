@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { listAgents, startAgent, stopAgent, deleteAgent } from '../../api/agents'
@@ -12,6 +12,11 @@ const shareSummary = ref({})
 const shareLoadingId = ref('')
 const selectedRowKeys = ref([])
 const batchOperating = ref(false)
+const shareModalVisible = ref(false)
+const shareModalAgentId = ref('')
+const shareTTLMode = ref(168) // 单选按钮的值：预设值或 'custom'
+const shareTTLHours = ref(168) // 实际的小时数
+const isCustomTTL = ref(false) // 是否选择了自定义
 
 const normalizeArray = (payload) => {
   if (Array.isArray(payload)) return payload
@@ -208,11 +213,39 @@ const rowSelection = {
   },
 }
 
-const handleQuickShare = async (id) => {
+const handleQuickShare = (id) => {
   if (!id) return
+  shareModalAgentId.value = id
+  shareTTLMode.value = 168 // 重置为默认值
+  shareTTLHours.value = 168
+  isCustomTTL.value = false
+  shareModalVisible.value = true
+}
+
+// 监听 shareTTLMode 的变化
+watch(shareTTLMode, (value) => {
+  if (value === 'custom') {
+    isCustomTTL.value = true
+    if (shareTTLHours.value <= 0 || [1, 6, 24, 72, 168, 720].includes(shareTTLHours.value)) {
+      shareTTLHours.value = 168 // 切换到自定义时，如果当前值是预设值，重置为默认值
+    }
+  } else {
+    isCustomTTL.value = false
+    shareTTLHours.value = value
+  }
+})
+
+const confirmCreateShare = async () => {
+  const id = shareModalAgentId.value
+  if (!id) return
+  if (shareTTLHours.value <= 0) {
+    message.warning('有效期必须大于 0 小时')
+    return
+  }
   shareLoadingId.value = id
+  shareModalVisible.value = false
   try {
-    const { data } = await createAgentShare(id, 168)
+    const { data } = await createAgentShare(id, shareTTLHours.value)
     const path = data?.share_path || ''
     const url = path ? `${window.location.origin}${path}` : ''
     if (!url) {
@@ -334,6 +367,42 @@ onMounted(fetchList)
       </a-table>
     </a-card>
   </div>
+  
+  <!-- 分享有效期设置 Modal -->
+  <a-modal
+    v-model:open="shareModalVisible"
+    title="创建分享链接"
+    :confirm-loading="shareLoadingId === shareModalAgentId"
+    @ok="confirmCreateShare"
+    ok-text="创建"
+    cancel-text="取消"
+  >
+      <div style="margin-bottom: 16px">
+        <div style="margin-bottom: 8px; font-weight: 500">有效期设置</div>
+        <a-radio-group v-model:value="shareTTLMode" style="width: 100%">
+          <a-space direction="vertical" style="width: 100%">
+            <a-radio :value="1">1 小时</a-radio>
+            <a-radio :value="6">6 小时</a-radio>
+            <a-radio :value="24">1 天</a-radio>
+            <a-radio :value="72">3 天</a-radio>
+            <a-radio :value="168">7 天（默认）</a-radio>
+            <a-radio :value="720">30 天</a-radio>
+            <a-radio value="custom">自定义</a-radio>
+          </a-space>
+        </a-radio-group>
+        <a-input-number
+          v-if="isCustomTTL"
+          v-model:value="shareTTLHours"
+          :min="1"
+          placeholder="请输入小时数（1 小时以上）"
+          style="width: 100%; margin-top: 8px"
+          addon-after="小时"
+        />
+        <div v-else style="margin-top: 8px; color: #8c8c8c; font-size: 12px">
+          分享链接将在 {{ shareTTLHours }} 小时后过期
+        </div>
+      </div>
+  </a-modal>
 </template>
 
 <style scoped lang="less">

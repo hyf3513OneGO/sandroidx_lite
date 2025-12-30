@@ -58,9 +58,9 @@ client.interceptors.response.use(
       } catch (e) {
         // ignore
       }
-      // 避免在登录/注册页死循环跳转
+      // 避免在登录/注册页和share页面死循环跳转
       const path = window.location?.pathname || ''
-      if (!path.startsWith('/auth/')) {
+      if (!path.startsWith('/auth/') && !path.startsWith('/share/')) {
         const redirect = encodeURIComponent(
           `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`,
         )

@@ -1,5 +1,8 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { message } from 'ant-design-vue'
+import { adbExec } from '../../api/sandboxes'
+import { shareAdbExec } from '../../api/share'
 
 const props = defineProps({
   sandboxId: { type: String, default: '' },
@@ -330,6 +333,68 @@ const sendTextDraft = () => {
 }
 const sendEnter = () => emitAdb({ cmd: buildKeyeventCommand('ENTER'), kind: 'keyevent', key: 'ENTER' })
 const sendBackspace = () => emitAdb({ cmd: buildKeyeventCommand('DEL'), kind: 'keyevent', key: 'DEL' })
+
+// 解锁屏幕
+const unlocking = ref(false)
+const unlockScreen = async () => {
+  if (!props.sandboxId && !props.shareToken) {
+    message.warning('需要 sandboxId 或 shareToken 才能解锁屏幕')
+    return
+  }
+  if (unlocking.value) return
+  
+  unlocking.value = true
+  try {
+    // 执行解锁命令序列：唤醒屏幕 -> 解除锁屏
+    const commands = [
+      'shell input keyevent KEYCODE_WAKEUP',
+      'shell wm dismiss-keyguard'
+    ]
+    
+    // 根据是否有 shareToken 选择不同的 API
+    let response
+    if (props.shareToken) {
+      response = await shareAdbExec(props.shareToken, { commands })
+    } else {
+      response = await adbExec(props.sandboxId, { commands })
+    }
+    const responseData = response?.data || {}
+    
+    // 检查是否有错误
+    if (responseData.error) {
+      throw new Error(responseData.error)
+    }
+    
+    // 检查退出码，0 表示成功
+    if (responseData.exit_code === 0) {
+      message.success('屏幕已解锁')
+    } else {
+      // 如果主要方法失败，尝试备用方法
+      const fallbackCommands = [
+        'shell input keyevent KEYCODE_WAKEUP',
+        'shell input keyevent KEYCODE_MENU'
+      ]
+      let fallbackResponse
+      if (props.shareToken) {
+        fallbackResponse = await shareAdbExec(props.shareToken, { commands: fallbackCommands })
+      } else {
+        fallbackResponse = await adbExec(props.sandboxId, { commands: fallbackCommands })
+      }
+      const fallbackData = fallbackResponse?.data || {}
+      
+      if (fallbackData.exit_code === 0 && !fallbackData.error) {
+        message.success('屏幕已解锁（使用备用方法）')
+      } else {
+        message.warning('解锁屏幕失败，设备可能未锁屏或需要其他解锁方式')
+      }
+    }
+  } catch (error) {
+    console.error('解锁屏幕失败:', error)
+    message.error('解锁屏幕失败: ' + (error.response?.data?.error || error.message || '未知错误'))
+  } finally {
+    unlocking.value = false
+  }
+}
 
 const log = (msg) => {
   console.log(`[Scrcpy] ${msg}`)
@@ -694,6 +759,10 @@ const connectWebSocket = async () => {
   ws.onerror = (e) => {
     log(`WebSocket 错误`)
     console.error(e)
+    // 确保错误时重置状态，允许重试
+    connected.value = false
+    overlayState.value = '连接失败'
+    emit('update:status', 'disconnected')
   }
 
   ws.onclose = () => {
@@ -786,6 +855,13 @@ watch(() => props.sandboxId, (newId, oldId) => {
   }
 })
 
+watch(() => props.shareToken, (newToken, oldToken) => {
+  if (newToken && newToken !== oldToken && props.status === 'playing' && !connected.value) {
+    // shareToken 变化时重新连接
+    connectWebSocket()
+  }
+})
+
 watch(() => props.status, (newStatus) => {
   if (newStatus === 'playing' && (props.sandboxId || props.shareToken) && !connected.value) {
     connectWebSocket()
@@ -857,6 +933,7 @@ watch(() => props.status, (newStatus) => {
       </div>
     </div>
 
+    <!-- 输入栏（非只读模式） -->
     <div class="input-bar" v-if="connected && !readonly">
       <a-space style="width: 100%" :size="8">
         <a-input
@@ -867,6 +944,27 @@ watch(() => props.status, (newStatus) => {
         <a-button @click="sendTextDraft">发送</a-button>
         <a-button @click="sendBackspace">退格</a-button>
         <a-button @click="sendEnter">回车</a-button>
+        <a-button 
+          type="primary" 
+          @click="unlockScreen" 
+          :loading="unlocking"
+          :disabled="!sandboxId && !shareToken"
+        >
+          解锁
+        </a-button>
+      </a-space>
+    </div>
+    <!-- 只读模式下的解锁按钮 -->
+    <div class="input-bar" v-if="connected && readonly && shareToken">
+      <a-space style="width: 100%" :size="8">
+        <a-button 
+          type="primary" 
+          @click="unlockScreen" 
+          :loading="unlocking"
+          block
+        >
+          解锁屏幕
+        </a-button>
       </a-space>
     </div>
   </div>

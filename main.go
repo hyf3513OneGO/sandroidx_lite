@@ -238,7 +238,7 @@ func main() {
 	// 初始化 Agent 分享服务和处理器（需要 AgentService + ScrcpyService）
 	if agentService != nil {
 		shareService := services.NewAgentShareService(models.DB)
-		agentShareHandler = handlers.NewAgentShareHandler(shareService, agentService, scrcpyService)
+		agentShareHandler = handlers.NewAgentShareHandler(shareService, agentService, scrcpyService, sandboxService)
 	}
 
 	// 用户路由
@@ -296,10 +296,10 @@ func main() {
 			securedGateway.Use(authMiddleware, adminOnly)
 
 			// 命令日志查询接口（需用户鉴权且仅管理员）
-		securedGateway.GET("/command-logs", adbCommandLogHandler.GetCommandLogs)
-		securedGateway.GET("/command-logs/mapping/:id", adbCommandLogHandler.GetCommandLogsByMappingID)
-		securedGateway.POST("/command-logs/delete", adbCommandLogHandler.DeleteCommandLogs)
-		securedGateway.POST("/command-logs/mapping/:id/clear", adbCommandLogHandler.ClearCommandLogsByMappingID)
+			securedGateway.GET("/command-logs", adbCommandLogHandler.GetCommandLogs)
+			securedGateway.GET("/command-logs/mapping/:id", adbCommandLogHandler.GetCommandLogsByMappingID)
+			securedGateway.POST("/command-logs/delete", adbCommandLogHandler.DeleteCommandLogs)
+			securedGateway.POST("/command-logs/mapping/:id/clear", adbCommandLogHandler.ClearCommandLogsByMappingID)
 
 			// ADB Gateway 映射管理接口
 			if adbGatewayHandler != nil {
@@ -368,15 +368,55 @@ func main() {
 		}
 	}
 
+	// 前端静态文件服务（在 API 路由之后注册，避免拦截 API 请求）
+	// 提供前端构建后的静态文件
+	r.Static("/assets", "./frontend/dist/assets")
+	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
+	r.StaticFile("/vite.svg", "./frontend/dist/vite.svg")
+
+	// SPA 路由回退：所有非 API 路由都返回 index.html（用于 Vue Router）
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		// 如果请求的是 API 路径，返回 404
+		if len(path) >= 4 && path[:4] == "/api" {
+			c.JSON(404, gin.H{
+				"error": "API endpoint not found",
+			})
+			return
+		}
+		// 如果请求的是 swagger、html、health 路径，不处理
+		if len(path) >= 8 && path[:8] == "/swagger" {
+			c.JSON(404, gin.H{
+				"error": "Not found",
+			})
+			return
+		}
+		if len(path) >= 5 && path[:5] == "/html" {
+			c.JSON(404, gin.H{
+				"error": "Not found",
+			})
+			return
+		}
+		if path == "/health" {
+			c.JSON(404, gin.H{
+				"error": "Not found",
+			})
+			return
+		}
+		// 如果请求的是静态资源路径，已经由上面的路由处理了，这里不应该到达
+		// 否则返回前端 index.html（让前端路由处理）
+		c.File("./frontend/dist/index.html")
+	})
+
 	// 启动服务器（使用自定义 HTTP 服务器以设置超时）
 	addr := fmt.Sprintf("%s:%d", configs.AppConfig.Server.Host, configs.AppConfig.Server.Port)
-	
+
 	// 从配置读取超时时间（默认 30 分钟）
 	timeoutSeconds := int64(1800)
 	if configs.AppConfig.Upload.TimeoutSeconds > 0 {
 		timeoutSeconds = configs.AppConfig.Upload.TimeoutSeconds
 	}
-	
+
 	server := &http.Server{
 		Addr:           addr,
 		Handler:        r,
@@ -384,7 +424,7 @@ func main() {
 		WriteTimeout:   time.Duration(timeoutSeconds) * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
-	
+
 	log.Printf("服务器启动在 %s (上传超时: %d 秒, 最大文件大小: %d 字节)", addr, timeoutSeconds, maxMultipartMemory)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("服务器启动失败: %v", err)

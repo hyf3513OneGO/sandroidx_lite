@@ -155,6 +155,7 @@ function renderTrend() {
           showSymbol: false,
           smooth: true,
           lineStyle: { width: 1.5, color: 'rgba(2,132,199,.9)' },
+          itemStyle: { color: 'rgba(2,132,199,.9)' },
           data: trend.value.rx,
         },
         {
@@ -163,6 +164,7 @@ function renderTrend() {
           showSymbol: false,
           smooth: true,
           lineStyle: { width: 1.5, color: 'rgba(124,58,237,.9)' },
+          itemStyle: { color: 'rgba(124,58,237,.9)' },
           data: trend.value.tx,
         },
       ],

@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"encoding/json"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -30,16 +31,18 @@ var shareScrcpyUpgrader = websocket.Upgrader{
 
 // AgentShareHandler Agent 分享（对外只读）处理器
 type AgentShareHandler struct {
-	shareService services.AgentShareService
-	agentService services.AgentService
-	scrcpy       services.ScrcpyService
+	shareService   services.AgentShareService
+	agentService   services.AgentService
+	scrcpy         services.ScrcpyService
+	sandboxService services.SandboxService
 }
 
-func NewAgentShareHandler(shareService services.AgentShareService, agentService services.AgentService, scrcpy services.ScrcpyService) *AgentShareHandler {
+func NewAgentShareHandler(shareService services.AgentShareService, agentService services.AgentService, scrcpy services.ScrcpyService, sandboxService services.SandboxService) *AgentShareHandler {
 	return &AgentShareHandler{
-		shareService: shareService,
-		agentService: agentService,
-		scrcpy:       scrcpy,
+		shareService:   shareService,
+		agentService:   agentService,
+		scrcpy:         scrcpy,
+		sandboxService: sandboxService,
 	}
 }
 
@@ -63,6 +66,7 @@ func (h *AgentShareHandler) RegisterRoutes(authRequired *gin.RouterGroup, public
 	public.GET("/share/agents/:token/scrcpy", h.ShareScrcpyWebSocket)
 	public.GET("/share/agents/:token/scrcpy/resolution", h.ShareScrcpyResolution)
 	public.GET("/share/agents/:token/scrcpy/status", h.ShareScrcpyStatus)
+	public.POST("/share/agents/:token/exec", h.ShareAdbExec)
 }
 
 type CreateShareRequest struct {
@@ -238,9 +242,9 @@ func (h *AgentShareHandler) GetSharedAgent(c *gin.Context) {
 			"expires_at": share.ExpiresAt,
 		},
 		"agent": gin.H{
-			"id":               agent.ID,
-			"image":            agent.Image,
-			"status":           agent.Status,
+			"id":                agent.ID,
+			"image":             agent.Image,
+			"status":            agent.Status,
 			"running_variables": agent.RunningVariables,
 			"running_commands":  agent.RunningCommands,
 			// 注意：sandbox_id 不直接暴露（scrcpy/shell 走 token 绑定）
@@ -730,4 +734,159 @@ func (h *AgentShareHandler) resolveSandboxID(ctx context.Context, agent *models.
 	return "", fmt.Errorf("无法定位该 Agent 对应的 Sandbox（映射未同步或未绑定）")
 }
 
+// ShareAdbExec 通过分享 token 执行 ADB 命令（仅用于解锁等安全操作）
+func (h *AgentShareHandler) ShareAdbExec(c *gin.Context) {
+	token := c.Param("token")
+	share, err := h.shareService.GetValid(c.Request.Context(), token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "分享不存在或已失效"})
+		return
+	}
 
+	agent, err := h.agentService.GetAgent(share.AgentID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Agent 不存在或已删除"})
+		return
+	}
+
+	sandboxID, err := h.resolveSandboxID(c.Request.Context(), agent)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	var req AdbExecRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "无效的请求参数: " + err.Error()})
+		return
+	}
+
+	// 汇总命令列表：优先使用 commands，兼容单条 command
+	commands := make([]string, 0, len(req.Commands)+1)
+	if strings.TrimSpace(req.Command) != "" {
+		commands = append(commands, strings.TrimSpace(req.Command))
+	}
+	for _, cmd := range req.Commands {
+		if trimmed := strings.TrimSpace(cmd); trimmed != "" {
+			commands = append(commands, trimmed)
+		}
+	}
+
+	if len(commands) == 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "命令不能为空"})
+		return
+	}
+
+	// 安全限制：只允许解锁相关的命令
+	allowedPrefixes := []string{
+		"shell input keyevent KEYCODE_WAKEUP",
+		"shell wm dismiss-keyguard",
+		"shell input keyevent KEYCODE_MENU",
+		"shell input swipe",
+	}
+	for _, cmd := range commands {
+		allowed := false
+		for _, prefix := range allowedPrefixes {
+			if strings.HasPrefix(cmd, prefix) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, ErrorResponse{Error: fmt.Sprintf("分享模式下不允许执行该命令: %s", cmd)})
+			return
+		}
+	}
+
+	// 根据命令数量动态放宽超时时间：每条 30s，至少 30s
+	timeout := time.Duration(len(commands)) * 30 * time.Second
+	if timeout < 30*time.Second {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+
+	adbDevice, err := h.sandboxService.GetAdbDeviceAddress(ctx, sandboxID)
+	if err != nil {
+		log.Printf("获取 ADB 设备地址失败: %v", err)
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("获取 ADB 设备失败: %v", err)})
+		return
+	}
+
+	// 确保 ADB 连接建立
+	connectCmd := exec.CommandContext(ctx, "adb", "connect", adbDevice)
+	if output, err := connectCmd.CombinedOutput(); err != nil {
+		out := strings.TrimSpace(string(output))
+		// best-effort：某些 serial（尤其是本地/已存在的映射）不需要 connect
+		if !strings.Contains(out, "already connected") && !strings.Contains(out, "connected to") {
+			log.Printf("[share-exec] 警告: adb connect 失败(忽略继续): device=%s err=%v out=%s", adbDevice, err, out)
+		}
+	}
+
+	// 逐条执行命令，汇总结果
+	results := make([]AdbCommandResult, 0, len(commands))
+	var outputBuilder strings.Builder
+	overallExit := 0
+	for idx, cmdStr := range commands {
+		cmdParts := strings.Fields(cmdStr)
+		if len(cmdParts) == 0 {
+			result := AdbCommandResult{
+				Command:  cmdStr,
+				ExitCode: -1,
+				Error:    "命令为空，已跳过",
+			}
+			results = append(results, result)
+			outputBuilder.WriteString(fmt.Sprintf("#%d $ <empty>\n命令为空，已跳过\n", idx+1))
+			overallExit = -1
+			continue
+		}
+
+		adbArgs := append([]string{"-s", adbDevice}, cmdParts...)
+		cmd := exec.CommandContext(ctx, "adb", adbArgs...)
+
+		output, err := cmd.CombinedOutput()
+		exitCode := 0
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = -1
+			}
+			overallExit = exitCode
+		}
+
+		result := AdbCommandResult{
+			Command:  cmdStr,
+			ExitCode: exitCode,
+			Output:   string(output),
+		}
+		if err != nil {
+			result.Error = fmt.Sprintf("命令执行失败: %v", err)
+		}
+		results = append(results, result)
+
+		outputBuilder.WriteString(fmt.Sprintf("#%d $ adb %s\n", idx+1, strings.Join(cmdParts, " ")))
+		outputBuilder.WriteString(string(output))
+		if len(output) == 0 || output[len(output)-1] != '\n' {
+			outputBuilder.WriteString("\n")
+		}
+		if result.Error != "" {
+			outputBuilder.WriteString(result.Error + "\n")
+		}
+	}
+
+	response := AdbExecResponse{
+		ExitCode: overallExit,
+		Output:   outputBuilder.String(),
+		Results:  results,
+	}
+
+	for _, r := range results {
+		if r.Error != "" {
+			response.Error = "部分命令执行失败"
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}

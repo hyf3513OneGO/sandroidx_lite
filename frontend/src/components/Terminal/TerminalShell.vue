@@ -10,7 +10,7 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['send', 'raw', 'clear'])
+const emit = defineEmits(['send', 'raw', 'clear', 'reconnect'])
 const input = ref('')
 
 // 直接按行展示，不做任何格式化处理
@@ -27,6 +27,11 @@ const handleSend = () => {
 
 const handleClear = () => {
   emit('clear')
+}
+
+const handleReconnect = () => {
+  if (props.readonly) return
+  emit('reconnect')
 }
 
 const handleInterrupt = () => {
@@ -56,6 +61,15 @@ const handleKeydown = (e) => {
         <span>{{ connected ? '已连接' : '未连接' }}</span>
         <span v-if="readonly" class="readonly-badge">只读</span>
         <a-spin v-if="loading" size="small" />
+        <a-button 
+          v-if="!connected && !readonly" 
+          size="small" 
+          type="primary"
+          :loading="loading"
+          @click="handleReconnect"
+        >
+          重连
+        </a-button>
         <a-button size="small" :disabled="loading || logs.length === 0" @click="handleClear">清屏</a-button>
         <a-button
           size="small"

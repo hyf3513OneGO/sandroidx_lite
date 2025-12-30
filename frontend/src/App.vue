@@ -38,10 +38,19 @@ const selectedKeys = computed(() => {
 const onMenuClick = ({ key }) => {
   router.push(key)
 }
+
+// 判断是否为share页面（公开页面，不需要侧边栏和头部）
+const isSharePage = computed(() => {
+  return route.path.startsWith('/share/')
+})
 </script>
 
 <template>
-  <a-layout class="app-shell">
+  <!-- Share页面：不显示侧边栏和头部 -->
+  <RouterView v-if="isSharePage" />
+  
+  <!-- 其他页面：显示完整布局 -->
+  <a-layout v-else class="app-shell">
     <a-layout-sider
       class="app-sider"
       collapsible
@@ -75,6 +84,11 @@ const onMenuClick = ({ key }) => {
       </a-layout-content>
     </a-layout>
   </a-layout>
+  
+  <!-- 版权角标 - 在所有页面显示 -->
+  <a href="https://github.com/hyf3513OneGO/sandroidx_lite" target="_blank" class="copyright-badge">
+    <span>© SAndroidX Lite</span>
+  </a>
 </template>
 
 <style scoped lang="less">
@@ -127,5 +141,31 @@ const onMenuClick = ({ key }) => {
 
 .app-content {
   padding: @space-xl 0 @space-xxl;
+}
+
+.copyright-badge {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+  text-decoration: none;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  
+  &:hover {
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  span {
+    display: inline-block;
+  }
 }
 </style>

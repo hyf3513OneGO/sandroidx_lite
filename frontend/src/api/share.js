@@ -19,3 +19,6 @@ export const getAgentShareSummary = () => client.get('/agents/share/summary')
 export const listAllShares = () => client.get('/agents/share/list')
 export const listSharesByAgent = (agentId) => client.get(`/agents/${agentId}/shares`)
 export const revokeShare = (token) => client.delete(`/agents/share/${token}`)
+
+// 通过分享 token 执行 ADB 命令（仅用于解锁等安全操作）
+export const shareAdbExec = (token, body) => client.post(`/share/agents/${token}/exec`, body)

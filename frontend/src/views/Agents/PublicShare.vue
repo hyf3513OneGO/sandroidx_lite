@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { getSharedAgent, revokeSharedToken } from '../../api/share'
+import { getSharedAgent } from '../../api/share'
 import FormBuilder from '../../components/FormBuilder/FormBuilder.vue'
 import TerminalShell from '../../components/Terminal/TerminalShell.vue'
 import ScrcpyPlayer from '../../components/VideoPlayer/ScrcpyPlayer.vue'
@@ -17,7 +17,6 @@ const execLoading = ref(false)
 const execLogs = ref([])
 const execConnected = ref(false)
 const execWsRef = ref(null)
-const revoked = ref(false)
 
 const scrcpyStatus = ref('playing')
 
@@ -147,18 +146,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   closeExecWs()
 })
-
-const handleRevoke = async () => {
-  if (!token) return
-  try {
-    await revokeSharedToken(token)
-    message.success('已撤销分享')
-    revoked.value = true
-    closeExecWs()
-  } catch (err) {
-    message.error(err.message || '撤销失败')
-  }
-}
 </script>
 
 <template>
@@ -173,24 +160,7 @@ const handleRevoke = async () => {
               <span v-if="share?.expires_at"> · 过期: {{ share.expires_at }}</span>
             </p>
           </div>
-          <a-space>
-            <a-popconfirm
-              title="确定撤销该分享链接？撤销后该 token 将立即失效。"
-              :disabled="revoked"
-              @confirm="handleRevoke"
-            >
-              <a-button danger :disabled="revoked">撤销分享</a-button>
-            </a-popconfirm>
-          </a-space>
         </div>
-
-        <a-alert
-          v-if="revoked"
-          type="success"
-          show-icon
-          message="该分享已撤销"
-          description="此链接已失效。"
-        />
 
         <a-card title="Running Commands" :loading="loading" bordered>
           <FormBuilder

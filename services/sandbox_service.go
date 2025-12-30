@@ -709,11 +709,59 @@ CHECK_PM:
 			out, err := cmd.CombinedOutput()
 			if err == nil && len(bytes.TrimSpace(out)) > 0 {
 				log.Printf("[异步] PackageManager 已就绪: %s", strings.TrimSpace(string(out)))
+				// 解锁屏幕，避免卡在锁屏界面
+				if err := s.unlockScreen(ctx, adbDevice); err != nil {
+					log.Printf("[异步] 警告: 解锁屏幕失败（可能设备未锁屏）: %v", err)
+				} else {
+					log.Printf("[异步] 屏幕已解锁")
+				}
 				return nil
 			}
 			log.Printf("[异步] 等待 PackageManager 就绪中... 输出: %s", strings.TrimSpace(string(out)))
 		}
 	}
+}
+
+// unlockScreen 解锁屏幕，避免卡在锁屏界面
+func (s *sandboxService) unlockScreen(ctx context.Context, adbDevice string) error {
+	// 1. 唤醒屏幕（如果屏幕关闭）
+	wakeCmd := exec.CommandContext(ctx, "adb", "-s", adbDevice, "shell", "input", "keyevent", "KEYCODE_WAKEUP")
+	if output, err := wakeCmd.CombinedOutput(); err != nil {
+		log.Printf("[异步] 唤醒屏幕失败: %v, 输出: %s", err, strings.TrimSpace(string(output)))
+		// 继续尝试解锁，即使唤醒失败
+	}
+	time.Sleep(500 * time.Millisecond) // 等待屏幕响应
+
+	// 2. 解除锁屏（Android 5.0+ 推荐方法）
+	dismissCmd := exec.CommandContext(ctx, "adb", "-s", adbDevice, "shell", "wm", "dismiss-keyguard")
+	output, err := dismissCmd.CombinedOutput()
+	if err == nil {
+		log.Printf("[异步] 使用 wm dismiss-keyguard 解除锁屏")
+		return nil
+	}
+	log.Printf("[异步] wm dismiss-keyguard 失败，尝试备用方法: %s", strings.TrimSpace(string(output)))
+
+	// 3. 备用方法：使用 input keyevent（适用于某些设备）
+	menuCmd := exec.CommandContext(ctx, "adb", "-s", adbDevice, "shell", "input", "keyevent", "KEYCODE_MENU")
+	output, err = menuCmd.CombinedOutput()
+	if err == nil {
+		log.Printf("[异步] 使用 KEYCODE_MENU 解除锁屏")
+		time.Sleep(300 * time.Millisecond)
+		return nil
+	}
+	log.Printf("[异步] KEYCODE_MENU 也失败: %s", strings.TrimSpace(string(output)))
+
+	// 4. 最后尝试：向上滑动解锁（适用于滑动解锁）
+	swipeCmd := exec.CommandContext(ctx, "adb", "-s", adbDevice, "shell", "input", "swipe", "500", "1500", "500", "500", "300")
+	output, err = swipeCmd.CombinedOutput()
+	if err == nil {
+		log.Printf("[异步] 使用滑动解锁")
+		time.Sleep(300 * time.Millisecond)
+		return nil
+	}
+
+	// 如果所有方法都失败，返回错误（但不会阻止后续操作）
+	return fmt.Errorf("所有解锁方法都失败，最后输出: %s", strings.TrimSpace(string(output)))
 }
 
 // updateSandboxStatus 更新 Sandbox 状态
@@ -1115,7 +1163,7 @@ func (s *sandboxService) StartSandbox(ctx context.Context, id string) error {
 		go func() {
 			installCtx, installCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer installCancel()
-			
+
 			for _, apkID := range sandbox.InstalledApkIDs {
 				if apkID == "" {
 					continue
@@ -1131,7 +1179,7 @@ func (s *sandboxService) StartSandbox(ctx context.Context, id string) error {
 				time.Sleep(2 * time.Second)
 			}
 			log.Printf("完成自动重新安装 APK")
-			
+
 			// 8.1 重新执行 setup_adb_commands（在 APK 安装完成后）
 			if len(sandbox.SetupAdbCommands) > 0 {
 				log.Printf("开始重新执行 %d 条 setup_adb_commands...", len(sandbox.SetupAdbCommands))
@@ -1278,13 +1326,13 @@ func (s *sandboxService) GetSandboxWithVolumes(id string) (*SandboxWithVolumes, 
 		if err := models.DB.First(&vol, "id = ?", sv.VolumeID).Error; err == nil {
 			volumesWithType = append(volumesWithType, SandboxVolumeWithType{
 				SandboxVolume: sv,
-				VolumeType:     vol.VolumeType,
+				VolumeType:    vol.VolumeType,
 			})
 		} else {
 			// 如果查询失败，使用默认值 "user"
 			volumesWithType = append(volumesWithType, SandboxVolumeWithType{
 				SandboxVolume: sv,
-				VolumeType:     "user",
+				VolumeType:    "user",
 			})
 		}
 	}
