@@ -1,0 +1,62 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 6080,
+    "mode": "debug",
+    "data_path": "container/data_volumes",
+    "network_name": "sandroidx_lite_network"
+  },
+  "database": {
+    "type": "sqlite",
+    "sqlite": {
+      "path": "database/data.db"
+    },
+    "mysql": {
+      "host": "localhost",
+      "port": 3306,
+      "user": "root",
+      "password": "password",
+      "dbname": "sandroidx_lite",
+      "charset": "utf8mb4"
+    }
+  },
+  "adb_gateway": {
+    "gateway_host": "127.0.0.1",
+    "gateway_api_port": 8080,
+    "auto_sync_enabled": true,
+    "sync_interval_sec": 300,
+    "image": "docker.io/hyf3513/adb-gateway:latest",
+    "gateway_token": "adbgw_token",
+    "upload_token": "adbgw_upload_token",
+    "log_system_mapping": false,
+    "log_agent_mapping": true,
+    "log_sandbox_mapping": true,
+    "gateway_config": {
+      "gateway_id": "gw-local",
+      "upload": {
+        "enabled": true,
+        "url": "http://host.docker.internal:6080/api/v1/adb-gateway/upload",
+        "token": "adbgw_upload_token"
+      },
+      "log": {
+        "max_days": 7,
+        "pending_warn_interval_minutes": 5
+      },
+      "database": {
+        "path": "/data/database/mappings.db"
+      },
+      "listen": {
+        "min_port": 15555,
+        "max_port": 15655
+      }
+    }
+  },
+  "auth": {
+    "jwt_secret": "change_me",
+    "token_ttl_hours": 24
+  },
+  "upload": {
+    "timeout_seconds": 1800,
+    "max_size_bytes": 1073741824
+  }
+}

@@ -1,0 +1,77 @@
+// Ant Design 轻定制 + 主题 CSS 变量（仅浅色）
+@import "./variables.less";
+
+:root {
+  --color-primary-text: #1a1a1a;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8f9fa;
+  --color-border: #e5e7eb;
+
+  --color-accent: #2563eb;
+  --color-accent-rgb: 37, 99, 235;
+
+  // 衍生色（避免 less fade 在运行时不可变的问题）
+  --color-muted-text: rgba(17, 24, 39, 0.55);
+  --color-accent-90: rgba(var(--color-accent-rgb), 0.9);
+  --color-accent-10: rgba(var(--color-accent-rgb), 0.1);
+  --color-accent-05: rgba(var(--color-accent-rgb), 0.05);
+
+  --font-family-base: @font-family-base;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --radius-sm: @radius-sm;
+  --radius-md: @radius-md;
+  --radius-lg: @radius-lg;
+  --space-md: @space-md;
+}
+
+// 覆写 Ant Design 关键色（使用 CSS 变量）
+.ant-btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+
+  &:hover,
+  &:focus {
+    background: var(--color-accent-90);
+    border-color: var(--color-accent-90);
+  }
+}
+
+.ant-btn-default {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+
+  &:hover,
+  &:focus {
+    color: var(--color-accent-90);
+    border-color: var(--color-accent-90);
+  }
+}
+
+.ant-btn-text {
+  color: var(--color-accent);
+}
+
+// 表格、卡片轻量化
+.ant-table-thead > tr > th {
+  background: var(--color-surface-alt);
+  font-weight: @font-weight-medium;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: var(--color-accent-05);
+}
+
+.ant-card {
+  border: none;
+  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-primary-text);
+}
+
+.ant-table {
+  color: var(--color-primary-text);
+}
+
+

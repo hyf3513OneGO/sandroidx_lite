@@ -1,0 +1,43 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Config files (if sensitive)
+# configs/config.json
+
+# Logs
+*.log
+sandroidx_lite
+container/data_volumes/volumes/*
+container/data_volumes/adb_gateway/*
+container/data_volumes/apks/*
+html
+frontend/dist
+frontend/node_modules
