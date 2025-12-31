@@ -1,0 +1,88 @@
+{
+  "agent": {
+    "image": "hyf3513/agent-ubuntu-22.04:latest",
+    "mounts": [
+      {
+        "volume": "",
+        "container_path": "/root/data",
+        "read_only": false
+      }
+    ],
+    "required_env_variables": [
+      "BIG_MODEL_API_KEY"
+    ],
+    "setup_commands": [
+      {
+        "workdir": "/root/data",
+        "run": "git clone https://github.com/zai-org/Open-AutoGLM.git"
+      },
+      {
+        "workdir": "/root/data/Open-AutoGLM",
+        "run": "pip install -r requirements.txt"
+      },
+      {
+        "workdir": "/root/data/Open-AutoGLM",
+        "run": "pip install -e ."
+      },
+      {
+        "workdir": "/root/data/Open-AutoGLM",
+        "run": "adb connect $ANDROID_SERIAL"
+      }
+    ],
+    "running_variables": [
+      {
+        "name": "<sandroidx_prompt_1>",
+        "description": "The prompt for the agent to use",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "running_commands": [
+      {
+        "workdir": "/root/data/Open-AutoGLM",
+        "run": "python main.py --base-url https://open.bigmodel.cn/api/paas/v4 --model autoglm-phone --apikey \"$BIG_MODEL_API_KEY\" \"<sandroidx_prompt_1>\""
+      }
+    ],
+    "envs": {
+      "BIG_MODEL_API_KEY": "your_api_key_here"
+    }
+  },
+  "sandbox": {
+    "type": "phone/redroid",
+    "image": "erstt/redroid:13.0.0_ndk_ChromeOS",
+    "mounts": [
+      {
+        "volume": "",
+        "container_path": "/data",
+        "read_only": false
+      }
+    ],
+    "ports": [
+      "5555"
+    ],
+    "privileged": true,
+    "args": [
+      "androidboot.redroid_width=1080",
+      "androidboot.redroid_height=1920",
+      "androidboot.redroid_dpi=480",
+      "androidboot.redroid_gpu_mode=auto"
+    ],
+    "apks": [
+      {
+        "name": "ADBKeyboard",
+        "package_name": "com.android.adbkeyboard",
+        "version": "2.0",
+        "url_str": "https://github.com/senzhk/ADBKeyBoard/raw/refs/heads/master/ADBKeyboard.apk",
+        "type": "remote"
+      }
+    ],
+    "setup_adb_commands": [
+      "shell ime enable com.android.adbkeyboard/.AdbIME",
+      "shell ime set com.android.adbkeyboard/.AdbIME",
+      "shell settings put system screen_off_timeout 600000"
+    ],
+    "envs": {
+      "TZ": "Asia/Shanghai"
+    }
+  }
+}

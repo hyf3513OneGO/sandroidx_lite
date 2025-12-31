@@ -8,41 +8,37 @@
         "read_only": false
       }
     ],
-    "required_env_variables": ["BIG_MODEL_API_KEY"],
+    "required_env_variables": ["STEPFUN_API_KEY"],
     "setup_commands": [
       {
         "workdir": "/root/data",
-        "run": "git clone https://github.com/zai-org/Open-AutoGLM.git"
+        "run": "git clone https://github.com/hyf3513OneGO/gelab-zero_cloud.git"
       },
       {
-        "workdir": "/root/data/Open-AutoGLM",
+        "workdir": "/root/data/gelab-zero_cloud",
         "run": "pip install -r requirements.txt"
       },
       {
-        "workdir": "/root/data/Open-AutoGLM",
-        "run": "pip install -e ."
-      },
-      {
-        "workdir": "/root/data/Open-AutoGLM",
+        "workdir": "/root/data/gelab-zero_cloud",
         "run": "adb connect $ANDROID_SERIAL"
       }
     ],
     "running_variables": [
       {
         "name": "<sandroidx_prompt_1>",
-        "description": "The prompt for the agent to use",
+        "description": "Agent的任务描述Prompt",
         "type": "string",
         "required": true
       }
     ],
     "running_commands": [
       {
-        "workdir": "/root/data/Open-AutoGLM",
-        "run": "python main.py --base-url https://open.bigmodel.cn/api/paas/v4 --model autoglm-phone --apikey \"$BIG_MODEL_API_KEY\" \"<sandroidx_prompt_1>\""
+        "workdir": "/root/data/gelab-zero_cloud",
+        "run": "python examples/run_single_task.py \"<sandroidx_prompt_1>\""
       }
     ],
     "envs": {
-      "BIG_MODEL_API_KEY": "your_api_key_here"
+      "STEPFUN_API_KEY": "your_api_key_here"
     }
   }
   ,
